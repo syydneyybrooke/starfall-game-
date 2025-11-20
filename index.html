@@ -1,12 +1,269 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Starfall Game</title>
-<script src="main.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Starfall Shooter</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: black; }
+    canvas { display: block; }
+  </style>
 </head>
 <body>
-<h1>Starfall Game Placeholder</h1>
-<p>Your Phaser game will load here.</p>
+  <canvas id="gameCanvas"></canvas>
+
+<script>
+// ==========================
+// INITIAL SETUP
+// ==========================
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// ==========================
+// PLAYER SETUP
+// ==========================
+const player = {
+  x: canvas.width / 2,
+  y: canvas.height - 80,
+  width: 40,
+  height: 40,
+  speed: 7,
+  dx: 0,
+  shooting: false,
+  canShoot: true,
+  shield: false,
+};
+
+// ==========================
+// PROJECTILES
+// ==========================
+let bullets = [];
+function shoot() {
+  if (!player.canShoot) return;
+  bullets.push({ x: player.x, y: player.y - 10, size: 6, speed: 7 });
+  player.canShoot = false;
+  setTimeout(() => player.canShoot = true, 250);
+}
+
+// ==========================
+// ENEMIES + METEORS
+// ==========================
+let enemies = [];
+let meteors = [];
+let crystals = [];
+let score = 0;
+let lives = 3;
+let level = 1;
+let totalKills = 0;
+
+function spawnEnemy() {
+  enemies.push({
+    x: Math.random() * (canvas.width - 40),
+    y: -40,
+    width: 40,
+    height: 40,
+    speed: 2 + level * 0.5,
+    special: Math.random() < 0.1,
+  });
+}
+
+function spawnMeteor() {
+  meteors.push({
+    x: Math.random() * canvas.width,
+    y: -60,
+    size: 50,
+    dx: (Math.random() - 0.5) * 3,
+    dy: 3 + Math.random() * 2,
+  });
+}
+
+function spawnCrystal(x, y) {
+  const types = ["red", "blue", "green"];
+  crystals.push({
+    x,
+    y,
+    size: 20,
+    type: types[Math.floor(Math.random() * 3)],
+    dy: 2,
+  });
+}
+
+// ==========================
+// DRAW FUNCTIONS
+// ==========================
+function drawPlayer() {
+  ctx.fillStyle = player.shield ? 'cyan' : 'lime';
+  ctx.fillRect(player.x - 20, player.y - 20, 40, 40);
+}
+
+function drawBullets() {
+  ctx.fillStyle = 'yellow';
+  bullets.forEach(b => ctx.fillRect(b.x - 3, b.y, 6, 12));
+}
+
+function drawEnemies() {
+  enemies.forEach(e => {
+    ctx.fillStyle = e.special ? 'red' : 'purple';
+    ctx.fillRect(e.x, e.y, e.width, e.height);
+  });
+}
+
+function drawMeteors() {
+  ctx.fillStyle = 'gray';
+  meteors.forEach(m => ctx.beginPath() || (ctx.arc(m.x, m.y, m.size, 0, Math.PI * 2), ctx.fill()));
+}
+
+function drawCrystals() {
+  crystals.forEach(c => {
+    ctx.fillStyle = c.type;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function drawHUD() {
+  ctx.fillStyle = 'white';
+  ctx.font = "20px Arial";
+  ctx.fillText(`Score: ${score}`, 20, 30);
+  ctx.fillText(`Lives: ${lives}`, 20, 60);
+  ctx.fillText(`Level: ${level}`, 20, 90);
+}
+
+// ==========================
+// UPDATE LOOPS
+// ==========================
+function updateBullets() {
+  bullets = bullets.filter(b => b.y > -20);
+  bullets.forEach(b => b.y -= b.speed);
+}
+
+function updateEnemies() {
+  enemies.forEach((enemy, i) => {
+    enemy.y += enemy.speed;
+
+    if (enemy.y > canvas.height) {
+      enemies.splice(i, 1);
+      lives--;
+      if (lives <= 0) alert("Game Over");
+    }
+  });
+}
+
+function updateMeteors() {
+  meteors = meteors.filter(m => m.y < canvas.height + 50);
+  meteors.forEach(m => {
+    m.x += m.dx;
+    m.y += m.dy;
+  });
+}
+
+function updateCrystals() {
+  crystals = crystals.filter(c => c.y < canvas.height + 40);
+  crystals.forEach(c => c.y += c.dy);
+}
+
+// ==========================
+// COLLISION DETECTION
+// ==========================
+function isColliding(a, b) {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  );
+}
+
+function handleCollisions() {
+  // Bullets hit enemies
+  bullets.forEach((b, bi) => {
+    enemies.forEach((e, ei) => {
+      if (b.x > e.x && b.x < e.x + e.width && b.y < e.y + e.height) {
+        bullets.splice(bi, 1);
+        enemies.splice(ei, 1);
+        score += e.special ? 25 : 10;
+        totalKills++;
+        if (Math.random() < 0.2) spawnCrystal(e.x, e.y);
+
+        if (totalKills % 20 === 0) level++;
+      }
+    });
+  });
+
+  // Player collects crystals
+  crystals.forEach((c, ci) => {
+    if (Math.abs(player.x - c.x) < 30 && Math.abs(player.y - c.y) < 40) {
+      crystals.splice(ci, 1);
+      activateCrystal(c.type);
+    }
+  });
+}
+
+// ==========================
+// POWER CRYSTALS
+// ==========================
+function activateCrystal(type) {
+  if (type === "red") {
+    player.canShoot = true;
+    const interval = setInterval(() => shoot(), 100);
+    setTimeout(() => clearInterval(interval), 5000);
+  }
+  if (type === "blue") {
+    bullets.push({ x: player.x - 20, y: player.y, size: 6, speed: 7 });
+    bullets.push({ x: player.x + 20, y: player.y, size: 6, speed: 7 });
+  }
+  if (type === "green") {
+    player.shield = true;
+    setTimeout(() => player.shield = false, 5000);
+  }
+}
+
+// ==========================
+// CONTROLS
+// ==========================
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowLeft' || e.key === 'a') player.dx = -player.speed;
+  if (e.key === 'ArrowRight' || e.key === 'd') player.dx = player.speed;
+  if (e.key === ' ') shoot();
+});
+
+window.addEventListener('keyup', (e) => {
+  if (['ArrowLeft', 'a', 'ArrowRight', 'd'].includes(e.key)) player.dx = 0;
+});
+
+// ==========================
+// MAIN GAME LOOP
+// ==========================
+setInterval(spawnEnemy, 800);
+setInterval(spawnMeteor, 2000);
+
+function gameLoop() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Update
+  player.x += player.dx;
+  updateBullets();
+  updateEnemies();
+  updateMeteors();
+  updateCrystals();
+  handleCollisions();
+
+  // Draw
+  drawPlayer();
+  drawBullets();
+  drawEnemies();
+  drawMeteors();
+  drawCrystals();
+  drawHUD();
+
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
 </body>
 </html>
+
